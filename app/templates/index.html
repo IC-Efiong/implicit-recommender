@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Implicit Feedback Recommender</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Product Recommender System</h1>
+            <p class="subtitle">Personalized recommendations based on your implicit feedback</p>
+        </header>
+        
+        <main>
+            <section class="recommendation-form">
+                <form id="recForm">
+                    <div class="form-group">
+                        <label for="user_id">User ID:</label>
+                        <input type="text" id="user_id" name="user_id" 
+                               placeholder="e.g., 123 (existing) or new_1 (new user)" required>
+                    </div>
+                    <button type="submit" class="btn">Get Recommendations</button>
+                </form>
+            </section>
+            
+            <section id="results" class="results-container">
+                <div class="placeholder">
+                    <p>Enter a user ID to get recommendations</p>
+                </div>
+            </section>
+        </main>
+        
+        <footer>
+            <p class="info-note">Note: This system learns from implicit feedback like clicks, views, and purchases.</p>
+        </footer>
+    </div>
+
+    <script>
+        document.getElementById('recForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            const user_id = document.getElementById('user_id').value.trim();
+            const resultsDiv = document.getElementById('results');
+            
+            // Show loading state
+            resultsDiv.innerHTML = `
+                <div class="loading">
+                    <div class="spinner"></div>
+                    <p>Generating recommendations...</p>
+                </div>
+            `;
+            
+            try {
+                const response = await fetch('/recommend', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                    },
+                    body: `user_id=${encodeURIComponent(user_id)}`
+                });
+                
+                const data = await response.json();
+                
+                if (data.status === 'success') {
+                    let html = `
+                        <h2>Recommendations for ${user_id}</h2>
+                        <p class="user-type">
+                            ${data.user_type === 'existing' ? 
+                                'Personalized recommendations' : 
+                                'Welcome new user! Starter recommendations'}
+                        </p>
+                        
+                        <div class="recommendations">
+                            <h3>Top Recommendations</h3>
+                            <ol>
+                                ${data.recommendations.map(item => `
+                                    <li>Item #${item}</li>
+                                `).join('')}
+                            </ol>
+                        </div>
+                    `;
+                    
+                    if (data.explanations && data.explanations.length > 0) {
+                        html += `<div class="explanations">
+                            <h3>Why these recommendations?</h3>
+                            <ul>
+                                ${data.explanations.map(exp => `
+                                    <li class="explanation ${exp.type}">
+                                        <p>${exp.reason}</p>
+                                        ${exp.similarity_score ? 
+                                            `<span class="score">Similarity: ${exp.similarity_score.toFixed(2)}</span>` : ''}
+                                    </li>
+                                `).join('')}
+                            </ul>
+                        </div>`;
+                    }
+                    
+                    resultsDiv.innerHTML = html;
+                } else {
+                    resultsDiv.innerHTML = `
+                        <div class="error">
+                            <p>Error: ${data.message}</p>
+                            <p>Please try a different user ID.</p>
+                        </div>
+                    `;
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                resultsDiv.innerHTML = `
+                    <div class="error">
+                        <p>An error occurred while fetching recommendations.</p>
+                        <p>Please try again later.</p>
+                    </div>
+                `;
+            }
+        });
+    </script>
+</body>
+</html>
