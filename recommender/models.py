@@ -1,31 +1,27 @@
-from typing import List, Tuple, Optional
+"""Recommendation models.
+Run tests with: pytest tests/test_models.py
+"""
+
 import implicit
 import numpy as np
 from scipy.sparse import csr_matrix
 from implicit.nearest_neighbours import bm25_weight
+import logging
 
-MODEL_TYPE = 'als'
-FACTORS = 64
-REGULARIZATION = 0.01
-ITERATIONS = 15
+logger = logging.getLogger(__name__)
 
 class ImplicitRecommender:
-    """Implicit feedback recommendation system with multiple algorithm support."""
-    
-    def __init__(self, model_type = MODEL_TYPE, factors = FACTORS, 
-                 regularization = REGULARIZATION, iterations = ITERATIONS):
-        self.model_type = model_type or MODEL_TYPE
-        self.factors = factors or FACTORS
-        self.regularization = regularization or REGULARIZATION
-        self.iterations = iterations or ITERATIONS
-        
+    def __init__(self, model_type='als', factors=64, regularization=0.01, iterations=15):
+        self.model_type = model_type.lower()
+        self.factors = factors
+        self.regularization = regularization
+        self.iterations = iterations
         self.model = None
-        self.user_factors: Optional[np.ndarray] = None
-        self.item_factors: Optional[np.ndarray] = None
-        
+        self.user_factors = None
+        self.item_factors = None
+
     def fit(self, user_item_matrix: csr_matrix) -> None:
-        """Train the recommendation model."""
-        # Apply BM25 weighting to reduce popularity bias
+        """Train the recommendation model"""
         weighted_matrix = bm25_weight(user_item_matrix, K1=100, B=0.8)
         
         if self.model_type == 'als':
@@ -33,58 +29,41 @@ class ImplicitRecommender:
                 factors=self.factors,
                 regularization=self.regularization,
                 iterations=self.iterations,
-                random_state=42)
+                random_state=42
+            )
         elif self.model_type == 'bpr':
             self.model = implicit.bpr.BayesianPersonalizedRanking(
                 factors=self.factors,
                 regularization=self.regularization,
                 iterations=self.iterations,
-                random_state=42)
-        elif self.model_type == 'lmf':
-            self.model = implicit.lmf.LogisticMatrixFactorization(
-                factors=self.factors,
-                regularization=self.regularization,
-                iterations=self.iterations,
-                random_state=42)
+                random_state=42
+            )
         else:
             raise ValueError(f"Unsupported model type: {self.model_type}")
         
         self.model.fit(weighted_matrix)
         
-        # Store factors for explanation and cold start
         if hasattr(self.model, 'user_factors'):
             self.user_factors = self.model.user_factors
             self.item_factors = self.model.item_factors
-    
-    def recommend(self, user_id, user_item_matrix, N=10, filter_already_liked=True):
-        """Generate recommendations with additional validation"""
+
+    def recommend(self, user_id: int, user_items: csr_matrix, N=10) -> list:
+        """Generate recommendations for a user"""
         if self.model is None:
-            raise ValueError("Model must be fitted before making recommendations")
-        
-        if user_id >= user_item_matrix.shape[0]:
-            raise ValueError(
-                f"User ID {user_id} is out of bounds for matrix with {user_item_matrix.shape[0]} users")
-        
+            raise ValueError("Model not trained")
+        if user_id >= user_items.shape[0]:
+            raise ValueError(f"User ID {user_id} out of bounds (max: {user_items.shape[0]-1})")
+            
+        # Corrected recommendation call - using positional arguments
         return self.model.recommend(
-            user_id, 
-            user_item_matrix, 
+            user_id,  # Positional argument
+            user_items,  # Positional argument
             N=N,
-            filter_already_liked_items=filter_already_liked)
-    
-    def similar_items(self, item_id: int, N: int = 10) -> List[Tuple[int, float]]:
-        """Find similar items to the given item."""
+            filter_already_liked_items=True
+        )
+
+    def similar_items(self, item_id: int, N=10) -> list:
+        """Find similar items"""
         if self.model is None:
-            raise ValueError("Model must be fitted before finding similar items")
+            raise ValueError("Model not trained")
         return self.model.similar_items(item_id, N=N)
-    
-    def explain(self, user_id: int, item_id: int, 
-               user_item_matrix: csr_matrix) -> List[Tuple[int, float]]:
-        """Explain why an item was recommended to a user."""
-        if not hasattr(self.model, 'explain'):
-            raise NotImplementedError(f"Explanation not supported for {self.model_type}")
-        
-        _, contributions = self.model.explain(
-            user_id,
-            user_item_matrix,
-            itemid=item_id)
-        return contributions
